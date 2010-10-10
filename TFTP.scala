@@ -44,7 +44,6 @@ case class Retransmit(msg: MSG, attempts: Int)
 case class Stop
 case class TID
 
-/* new code starts */
 class PacketHistory(_id: Int, _status: Boolean) {
 	val id = _id
 	val status = _status
@@ -55,6 +54,7 @@ class PacketHistory(_id: Int, _status: Boolean) {
 
 class PacketHistoryList{
 	val packetsHistory: ListBuffer[PacketHistory] = ListBuffer(new PacketHistory(1, false))
+	
 	def add(x: PacketHistory) = { packetsHistory += x }
 	def sub(x: PacketHistory) = { packetsHistory -= x }
 	def update(id: Int) = {
@@ -74,11 +74,11 @@ class PacketHistoryList{
 		packetsHistory foreach (x => { if (x.id == id) packetHistory = x } )
 		return packetHistory
 	}
+	
 	def last = if (packetsHistory.isEmpty) null else packetsHistory.last //TODO remove unnecessary checks
+	
 	override def toString = { var ph = ""; packetsHistory foreach (x => ph+=x+" "); ph }
 }
-
-/* new code ends */
 
 class Connection(_ref: Actor, _client: Int, _server: Int, _path: String, _opcode: Int, _closed: Boolean = false, _packetsHistory: PacketHistoryList = new PacketHistoryList) {
 	val ref = _ref
@@ -110,6 +110,10 @@ class ConnectionList {
 		val idx = connections.indexOf( connection )
 		if (idx != -1)
 			connections.update(idx, connection.updateServer(server))
+		//var connection: Connection = null
+		//val idx = connections.findIndexOf( conn => if (conn.asInstanceOf[Connection].client == client) { connection = conn; true } )
+		//if (idx != -1)
+		//	connections.update(idx, connection.updateServer(server))
 	}
 	def updateStatus(conn: Connection) = {
 		connections.update(connections.indexOf(conn), conn.updateStatus)
@@ -153,8 +157,8 @@ class Retransmitter extends Actor {
 }
 
 trait Timer {
-	private val connections = new ConnectionList
-	private val retransmitter = new Retransmitter
+	val connections = new ConnectionList
+	val retransmitter = new Retransmitter
 	
 	var finished = false
 	
@@ -196,7 +200,7 @@ object TFTPServer extends Actor with Timer {
 					else {
 						val byteToSend = if (id+1<20) (id*3-1).toByte else 0.toByte; //TODO change to a real byte
 						connection.packetsHistory.add( new PacketHistory(id+1, false) )
-						retransmitter ! W84ME(self, 500, new DATA(client, server, id+1, byteToSend), 0)
+						retransmitter ! W84ME(self, 100, new DATA(client, server, id+1, byteToSend), 0)
 						connection.ref ! DATA(client, server, id+1, byteToSend)
 						if (byteToSend == 0) connections.updateStatus(connection)
 					}
@@ -210,24 +214,23 @@ object TFTPServer extends Actor with Timer {
 				case ERR(client, server) =>
 					//TODO implement error handling code
 					null
-				/* new code starts */
 				case "FakeAConnection" =>
-					connections.add( new Connection(null, 96, 69, "D:file1", 1) )
+					connections.add( new Connection(null, 96, 69, "D:fakeFile1", 1) )
 					connections.get(96, 69).packetsHistory.add(new PacketHistory(1, true))
 					connections.get(96, 69).packetsHistory.add(new PacketHistory(2, true))
 					connections.get(96, 69).packetsHistory.add(new PacketHistory(3, false))
 				case "FakeAnotherConnection" =>
-					connections.add( new Connection(null, 101, 69, "D:file2", 2) )
+					connections.add( new Connection(null, 101, 69, "D:fakeFile2", 2) )
 					connections.get(101, 69).packetsHistory.add(new PacketHistory(1, true))
 					connections.get(101, 69).packetsHistory.add(new PacketHistory(2, false))
 				case "FakeARetransmition" =>
-					println("Faking a retransmition...")
+					println("Faking a Server retransmition...")
 					// send a message that will never be delivered
-					retransmitter ! W84ME( self, 500, new ACK(96, 69, 3), 0 )
+					retransmitter ! W84ME( self, 100, new ACK(96, 69, 3), 0 )
 				case "FakeAnotherRetransmition" =>
-					println("Faking another retransmition...")
+					println("Faking another Server retransmition...")
 					// send a message that will never be delivered
-					retransmitter ! W84ME( self, 500, new ACK(101, 69, 2), 0 )
+					retransmitter ! W84ME( self, 100, new ACK(101, 69, 2), 0 )
 				case Retransmit(msg, attempts) =>
 					if (msg.isInstanceOf[ACK] || msg.isInstanceOf[DATA] || msg.isInstanceOf[ERR]) {
 						/* Capturing message parameters */
@@ -248,7 +251,7 @@ object TFTPServer extends Actor with Timer {
 							else if (!connection.wasPacketReceived(id)) {
 								//println(connection+" "+connection.packetsHistory)
 								println(connection+"Retransmitting "+msg+"...")
-								retransmitter ! W84ME( self, 500, msg, attempts )
+								retransmitter ! W84ME( self, 100, msg, attempts )
 							} else {
 								//println(connection+"Packet already received. Ignoring retransmition request...")
 								/* test code */ if (client == 101 && server == 69) connections.sub( connection )
@@ -300,7 +303,7 @@ class TFTPClient extends Actor with Timer {
 					else {
 						val byteToSend = if (id <= 10) (id+1).toByte else 0.toByte;
 						connection.packetsHistory.add( new PacketHistory(id+1, false) )
-						retransmitter ! W84ME(self, 500, new DATA(client, server, id+1, byteToSend), 0)
+						retransmitter ! W84ME(self, 200, new DATA(client, server, id+1, byteToSend), 0)
 						TFTPServer ! DATA(client, server, id+1, byteToSend)
 						println(connection+"["+id+"]: "+byteToSend)
 						if (byteToSend == 0) {
@@ -326,8 +329,53 @@ class TFTPClient extends Actor with Timer {
 					}
 				case ERR(client, server) =>
 					var connection = connections.get(client, server)
-					println(connection+" Connection failure...")
+					println(connection+" Connection rejected...")
 					if (connection != null) connections.sub( connection )
+				case "FakeAConnection" =>
+					connections.add( new Connection(null, 96, 69, "D:fakeFile1", 1) )
+					connections.get(96, 69).packetsHistory.add(new PacketHistory(1, true))
+					connections.get(96, 69).packetsHistory.add(new PacketHistory(2, true))
+					connections.get(96, 69).packetsHistory.add(new PacketHistory(3, false))
+				case "FakeAnotherConnection" =>
+					connections.add( new Connection(null, 103, 69, "D:fakeFile2", 2) )
+					connections.get(103, 69).packetsHistory.add(new PacketHistory(1, true))
+					connections.get(103, 69).packetsHistory.add(new PacketHistory(2, false))
+				case "FakeARetransmition" =>
+					println("Faking a Client retransmition...")
+					// send a message that will never be delivered
+					retransmitter ! W84ME( self, 100, new ACK(96, 69, 3), 0 )
+				case "FakeAnotherRetransmition" =>
+					println("Faking another Client retransmition...")
+					// send a message that will never be delivered
+					retransmitter ! W84ME( self, 100, new ACK(103, 69, 2), 0 )
+				case Retransmit(msg, attempts) =>
+					if (msg.isInstanceOf[ACK] || msg.isInstanceOf[DATA] || msg.isInstanceOf[ERR]) {
+						/* Capturing message parameters */
+						val client: Int = msg.productElement(0).asInstanceOf[Int]
+						val server: Int = msg.productElement(1).asInstanceOf[Int]
+						val id: Int = msg.productElement(2).asInstanceOf[Int]
+						
+						val connection = connections.get(client, server)
+						if (connection == null) {
+							//println(connection+"Couldn't Retransmit "+msg+"! Connection not found!")
+						} else {
+							/* test code */ if (attempts >= 3 && client == 103) connection.packetsHistory.update( id )
+							if (attempts >=5) {
+								//println(connection+" "+connection.packetsHistory)
+								println(connection+"Maximum number of retransmition attempts exceeded! Closing connection...")
+								connections.sub( connection )
+							}
+							else if (!connection.wasPacketReceived(id)) {
+								//println(connection+" "+connection.packetsHistory)
+								println(connection+"Retransmitting "+msg+"...")
+								retransmitter ! W84ME( self, 200, msg, attempts )
+							} else {
+								//println(connection+"Packet already received. Ignoring retransmition request...")
+								/* test code */ if (client == 103 && server == 69) connections.sub( connection )
+							}
+						}
+					} else
+						println("This packet cannot be retransmitted: "+msg)
 				case Stop =>
 					if (finished) {
 						println("Client stopping...")
@@ -348,7 +396,6 @@ object Main {
 		TIDGenerator.start
 		TFTPServer.start
 		
-		
 		//create a fake connection and fake a retransmission of a packet
 		TFTPServer ! "FakeAConnection"
 		TFTPServer ! "FakeARetransmition"
@@ -358,6 +405,24 @@ object Main {
 		
 		TFTPServer ! "FakeAnotherConnection"
 		TFTPServer ! "FakeAnotherRetransmition"
+		
+		Thread.sleep(2500)
+		println
+		
+		val fakeClient1 = new TFTPClient
+		fakeClient1.start
+		fakeClient1 ! "FakeAConnection"
+		fakeClient1 ! "FakeARetransmition"
+		fakeClient1 ! Stop
+		
+		Thread.sleep(3200)
+		println
+		
+		val fakeClient2 = new TFTPClient
+		fakeClient2.start
+		fakeClient2 ! "FakeAnotherConnection"
+		fakeClient2 ! "FakeAnotherRetransmition"
+		fakeClient2 ! Stop
 		
 		Thread.sleep(2500)
 		println
