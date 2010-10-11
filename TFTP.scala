@@ -204,7 +204,7 @@ object TFTPServer extends Actor with Timer {
 							"1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"+
 							"1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"+
 							"1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"+
-							"abcdefghijklmnopqrstuv") //TODO change to a real byte
+							"abcdefghijkl") //TODO change to a real packet
 					}
 				case WRQ(ref, client, server, fileName) =>
 					val path = System.getProperty("user.dir")+"/server/"+fileName;
@@ -323,12 +323,15 @@ class TFTPClient extends Actor with Timer {
 					connection.packetsHistory.update( id )
 					if (connection.isClosed) connections.sub(connection)
 					else {
-						val payload = "testing\nclient\nsending a payload"; //if (id <= 10) (id+1).toByte else 0.toByte;
+						val payload = new Array[Char](512);
+						val len = connection.reader.read(payload) //"testing\nclient\nsending a payload"; //if (id <= 10) (id+1).toByte else 0.toByte;
+						var pl: String = ""
+						payload foreach (c => if (c != 0) pl += c)
 						connection.packetsHistory.add( new PacketHistory(id+1, false) )
-						retransmitter ! W84ME(self, 200, new DATA(client, server, id+1, payload), 0)
-						TFTPServer ! DATA(client, server, id+1, payload)
-						println(connection+"["+id+"]: "+payload)
-						if (payload.length < 512) {
+						retransmitter ! W84ME(self, 200, new DATA(client, server, id+1, pl), 0)
+						TFTPServer ! DATA(client, server, id+1, pl)
+						println(connection+"["+id+"]: "+pl+"["+pl.length+"]")
+						if (len < 512) {
 							println(connection+" SEND complete! Closing connection...")
 							connections.updateStatus(connection)
 						}
