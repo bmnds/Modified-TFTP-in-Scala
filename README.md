@@ -40,10 +40,10 @@ So in a file of 1MB we would use (1.048.576B/512B)*33b/8 = 8KB of extra memory, 
 Current Status
 ------------
 
-Right now the control part is done. We can start connections, end them, send packets, receive and acknowledge them, retrasmit when necessary and have multiple clients with multiple connections.
+Right now the message control, file handling and data transfer are done. So basically, we can start connections, end them, send packets, receive and acknowledge them, retrasmit when necessary and have multiple clients with multiple connections as well as getting existing files from the destination machine and writing files to them too. There is no browsing, since we just have access to one folder we work with the filename only.
 The next steps are:
-1. Handle search/creation of files (as well as preventing the clients from accessing improper areas of the disk)
-2. Read/Write from real files (after 1 is complete)
-3. Change the DATA packet to carry 512bytes instead of 1byte (after 2 is complete)
+1. (DONE) Handle search/creation of files (as well as preventing the clients from accessing improper areas of the disk)
+2. (DONE) Read/Write from real files (after 1 is complete)
+3. (DONE) Change the DATA packet to carry 512bytes instead of 1byte (after 2 is complete)
 4. Change actors to remote actors so real transfer can be accomplished between different machines (after 3 is complete)
 5. Conduct a performance test and compare with other strategies (after all the rest is complete)
