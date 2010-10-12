@@ -1,6 +1,4 @@
 /* 
- * TODO: Create File Cleaning and Generation to restart the program data to a stable state every start
- * TODO: Implement real File read/write
  * TODO: Add Error Handling
  */
 
@@ -71,12 +69,11 @@ class Connection(_ref: Actor, _client: Int, _server: Int, _path: String, _opcode
 	val opcode = _opcode
 	val closed = _closed
 	val packetsHistory = _packetsHistory
-	val file = new File(path) //TODO do it only after server is set
-	val reader: BufferedReader = if (opcode == 1 && !closed) new BufferedReader( new FileReader(file) ) else null //TODO do it only if it is a read request
-	val writer: BufferedWriter = if (opcode == 2 && !closed) new BufferedWriter( new FileWriter(file) ) else null //TODO do it only if it is a write request
+	val file: File = if (server != 69) new File(path) else null //TODO do it only after server is set
+	val reader: BufferedReader = if (opcode == 1 && !closed && file != null) new BufferedReader( new FileReader(file) ) else null //TODO do it only if it is a read request
+	val writer: BufferedWriter = if (opcode == 2 && !closed && file != null) new BufferedWriter( new FileWriter(file) ) else null //TODO do it only if it is a write request
 	
-	//def getFile = file
-	def updateServer(_server: Int): Connection = { if (opcode == 1) reader.close; if (opcode == 2) writer.close; new Connection(ref, client, _server, path, opcode) }
+	def updateServer(_server: Int): Connection = { if (opcode == 1 && file != null) reader.close; if (opcode == 2 && file != null) writer.close; new Connection(ref, client, _server, path, opcode) }
 	def updateStatus: Connection = { if (opcode == 1) reader.close; if (opcode == 2) writer.close; new Connection(ref, client, server, path, opcode, true, packetsHistory) }
 	
 	def isClosed = closed
@@ -158,50 +155,48 @@ trait Timer {
 	}
 }
 
-trait FileHandler {
-	
-}
-
 object TFTPServer extends Actor with Timer {
 	def act = {
 		println("Starting server...")
+		val path = System.getProperty("user.dir")+"/server/"
 		retransmitter.start
 		println("Server ONLINE\n")
 		loop {
 			react {
 				case RRQ(ref, client, server, fileName) =>
-					val path = System.getProperty("user.dir")+"/server/"+fileName;
-					if (path.equalsIgnoreCase("c:\\file0")) {
-						//println("Server sending ERR...")
-						ref ! ERR(client, server)
-					} else {
+					val filePath = path+fileName;
+					/* test code */ if (fileName.equalsIgnoreCase("file")) ref ! ERR(client, server)
+					else {
 						val tid = TIDGenerator !? TID match { case tid: Int => tid }
-						connections.add( new Connection(ref, client, tid, path, 1) )
-						//println("Server sending DATA...")
-						ref ! DATA(client, tid, 1, 
-							"1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"+
-							"1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"+
-							"1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"+
-							"1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"+
-							"1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890"+
-							"abcdefghijkl") //TODO change to a real packet
+						val connection = new Connection(ref, client, tid, filePath, 1)
+						
+						connections.add( connection )
+						val payload = new Array[Char](512);
+						val len = connection.reader.read(payload)
+						var pl: String = ""
+						payload foreach (c => if (c != 0) pl += c)
+						retransmitter ! W84ME(self, 200, new DATA(client, tid, 1, pl), 0)
+						connection.ref ! DATA(client, tid, 1, pl)
+						if (len < 512) connections.updateStatus(connection)
 					}
 				case WRQ(ref, client, server, fileName) =>
-					val path = System.getProperty("user.dir")+"/server/"+fileName;
+					val filePath = path+fileName;
 					val tid = TIDGenerator !? TID match { case tid: Int => tid }
-					connections.add( new Connection(ref, client, tid, path, 2) )
-					//println("Server sending ACK...")
+					connections.add( new Connection(ref, client, tid, filePath, 2) )
 					ref ! ACK(client, tid, 0)
 				case ACK(client, server, id) =>
 					val connection = connections.get(client, server)
 					connection.packetsHistory.update( id )
 					if (connection.isClosed) connections.sub(connection)
 					else {
-						val payload = "testing\nserver\nsending a payload"; //TODO change to a real byte
+						val payload = new Array[Char](512);
+						val len = connection.reader.read(payload)
+						var pl: String = ""
+						payload foreach (c => if (c != 0) pl += c)
 						connection.packetsHistory.add( new PacketHistory(id+1, false) )
-						retransmitter ! W84ME(self, 100, new DATA(client, server, id+1, payload), 0)
-						connection.ref ! DATA(client, server, id+1, payload)
-						if (payload.length < 512) connections.updateStatus(connection)
+						retransmitter ! W84ME(self, 200, new DATA(client, server, id+1, pl), 0)
+						connection.ref ! DATA(client, server, id+1, pl)
+						if (len < 512) connections.updateStatus(connection)
 					}
 				case DATA(client, server, id, data) => 
 					val connection = connections.get(client, server)
@@ -215,12 +210,12 @@ object TFTPServer extends Actor with Timer {
 					//TODO implement error handling code
 					null
 				case "FakeAConnection" =>
-					connections.add( new Connection(null, 96, 69, "D:fakeFile1", 1) )
+					connections.add( new Connection(null, 96, 69, "fakeFile1", 1) )
 					connections.get(96, 69).packetsHistory.add(new PacketHistory(1, true))
 					connections.get(96, 69).packetsHistory.add(new PacketHistory(2, true))
 					connections.get(96, 69).packetsHistory.add(new PacketHistory(3, false))
 				case "FakeAnotherConnection" =>
-					connections.add( new Connection(null, 101, 69, "D:fakeFile2", 2) )
+					connections.add( new Connection(null, 101, 69, "fakeFile2", 2) )
 					connections.get(101, 69).packetsHistory.add(new PacketHistory(1, true))
 					connections.get(101, 69).packetsHistory.add(new PacketHistory(2, false))
 				case "FakeARetransmition" =>
@@ -278,20 +273,21 @@ object TFTPServer extends Actor with Timer {
 
 class TFTPClient extends Actor with Timer {
 	def act = {
+		val path = System.getProperty("user.dir")+"/client/"
 		retransmitter.start
 		loop {
 			react {
 				case GET(fileName: String) =>
-					val path = System.getProperty("user.dir")+"/client/"+fileName;
+					val filePath = path+fileName;
 					println("Client getting file "+path)
 					val tid = TIDGenerator !? TID match { case tid: Int => tid }
-					connections.add( new Connection(TFTPServer, tid, 69, path, 2) )
+					connections.add( new Connection(TFTPServer, tid, 69, filePath, 2) )
 					TFTPServer ! RRQ(self, tid, 69, fileName)
 				case SEND(fileName: String) =>
-					val path = System.getProperty("user.dir")+"/client/"+fileName;
+					val filePath = path+fileName;
 					println("Sending file "+path)
 					val tid = TIDGenerator !? TID match { case tid: Int => tid }
-					connections.add( new Connection(TFTPServer, tid, 69, path, 1) )
+					connections.add( new Connection(TFTPServer, tid, 69, filePath, 1) )
 					TFTPServer ! WRQ(self, tid, 69, fileName)
 				case ACK(client, server, id) =>
 					if (connections.get(client, server) == null && id==0) {
@@ -310,7 +306,7 @@ class TFTPClient extends Actor with Timer {
 						connection.packetsHistory.add( new PacketHistory(id+1, false) )
 						retransmitter ! W84ME(self, 200, new DATA(client, server, id+1, pl), 0)
 						TFTPServer ! DATA(client, server, id+1, pl)
-						println(connection+"["+id+"]: '"+pl+"' ("+pl.length+")")
+						println(connection+"["+id+"]: '" + /* pl + */ "' ("+pl.length+")")
 						if (len < 512) {
 							println(connection+" SEND complete! Closing connection...")
 							connections.updateStatus(connection)
@@ -325,7 +321,7 @@ class TFTPClient extends Actor with Timer {
 					val connection = connections.get(client, server)
 					if (connection.isClosed) connections.sub( connection )
 					else {
-						println(connection+"["+id+"]: '"+data+"'")
+						println(connection+"["+id+"]: '" + /* data+ */ "'"+" ("+data.length+")")
 						connection.writer.write( data )
 						TFTPServer ! ACK(client, server, id)
 						if (data.length < 512) {
@@ -338,12 +334,12 @@ class TFTPClient extends Actor with Timer {
 					println(connection+" Connection rejected...")
 					if (connection != null) connections.sub( connection )
 				case "FakeAConnection" =>
-					connections.add( new Connection(null, 96, 69, "D:fakeFile1", 1) )
+					connections.add( new Connection(null, 96, 69, "fakeFile1", 1) )
 					connections.get(96, 69).packetsHistory.add(new PacketHistory(1, true))
 					connections.get(96, 69).packetsHistory.add(new PacketHistory(2, true))
 					connections.get(96, 69).packetsHistory.add(new PacketHistory(3, false))
 				case "FakeAnotherConnection" =>
-					connections.add( new Connection(null, 103, 69, "D:fakeFile2", 2) )
+					connections.add( new Connection(null, 103, 69, "fakeFile2", 2) )
 					connections.get(103, 69).packetsHistory.add(new PacketHistory(1, true))
 					connections.get(103, 69).packetsHistory.add(new PacketHistory(2, false))
 				case "FakeARetransmition" =>
@@ -490,7 +486,7 @@ object Main {
 	
 		TIDGenerator.start
 		TFTPServer.start
-
+		
 		val client10 = new TFTPClient
 		client10 ! SEND("file0")
 		client10.start
@@ -555,7 +551,6 @@ object Main {
 		Thread.sleep(5500)
 		println
 		
-		/*
 		//create a fake connection and fake a retransmission of a packet
 		TFTPServer ! "FakeAConnection"
 		TFTPServer ! "FakeARetransmition"
@@ -587,45 +582,28 @@ object Main {
 		Thread.sleep(2500)
 		println
 		
-		val client1 = new TFTPClient
-		client1 ! GET("C:\\file1")
-		client1.start
-		//Thread.sleep(2000)
-		client1 ! Stop
-		
-		Thread.sleep(5500)
-		println
-		
-		val client2 = new TFTPClient
-		client2 ! SEND("C:\\file2")
-		client2.start
-		//Thread.sleep(2000)
-		client2 ! Stop
-		
-		Thread.sleep(5500)
-		println
-		
 		val client3 = new TFTPClient
-		client3 ! GET("C:\\file1")
-		client3 ! GET("C:\\file2")
-		client3 ! SEND("C:\\file3")		
+		client3 ! GET("file14")
+		client3 ! GET("file15")
+		client3 ! SEND("file4")		
 		client3.start
 		Thread.sleep(50)
-		client3 ! SEND("C:\\file4")		
-		client3 ! SEND("C:\\file5")		
+		client3 ! SEND("file5")		
+		client3 ! SEND("file6")
+		client3 ! GET("file16")
 		client3 ! Stop
 		
 		Thread.sleep(10000)
 		println
 		
 		val client4 = new TFTPClient
-		client4 ! GET("C:\\file0")
+		client4 ! GET("file")
 		client4.start
 		client4 ! Stop
 		
 		Thread.sleep(2200)
 		println
-		*/
+		
 		TFTPServer ! Stop
 		TIDGenerator ! Stop
 		Thread.sleep(2200)
