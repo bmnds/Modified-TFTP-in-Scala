@@ -1,27 +1,7 @@
 /* 
+ * TODO: Create File Cleaning and Generation to restart the program data to a stable state every start
  * TODO: Implement real File read/write
  * TODO: Add Error Handling
- */
-
-/* 
- * Date: 08/10/2010
- * Retransmition performance enhancement -> only 1 waiting actor instead of 1 per packet
- * Switched Timer Trait by Retransmitter Class
- */
-
-/* 
- * Date: 05/10/2010
- * Added retransmition control
- */
-
-/* 
- * Date: 04/10/2010
- * Added packet history class and list
- */
-
-/* 
- * Date: 03/10/2010
- * Added retransmition message and handler
  */
 
 import scala.actors.Actor
@@ -324,13 +304,13 @@ class TFTPClient extends Actor with Timer {
 					if (connection.isClosed) connections.sub(connection)
 					else {
 						val payload = new Array[Char](512);
-						val len = connection.reader.read(payload) //"testing\nclient\nsending a payload"; //if (id <= 10) (id+1).toByte else 0.toByte;
+						val len = connection.reader.read(payload)
 						var pl: String = ""
 						payload foreach (c => if (c != 0) pl += c)
 						connection.packetsHistory.add( new PacketHistory(id+1, false) )
 						retransmitter ! W84ME(self, 200, new DATA(client, server, id+1, pl), 0)
 						TFTPServer ! DATA(client, server, id+1, pl)
-						println(connection+"["+id+"]: "+pl+"["+pl.length+"]")
+						println(connection+"["+id+"]: '"+pl+"' ("+pl.length+")")
 						if (len < 512) {
 							println(connection+" SEND complete! Closing connection...")
 							connections.updateStatus(connection)
@@ -345,7 +325,7 @@ class TFTPClient extends Actor with Timer {
 					val connection = connections.get(client, server)
 					if (connection.isClosed) connections.sub( connection )
 					else {
-						println(connection+"["+id+"]: "+data)
+						println(connection+"["+id+"]: '"+data+"'")
 						connection.writer.write( data )
 						TFTPServer ! ACK(client, server, id)
 						if (data.length < 512) {
@@ -418,24 +398,159 @@ class TFTPClient extends Actor with Timer {
 }
 
 object Main {
+	val clientDirPath = System.getProperty("user.dir") + "/client/"
+	val serverDirPath = System.getProperty("user.dir") + "/server/"
+	val clientDir = new File(clientDirPath)
+	val serverDir = new File(serverDirPath)
+	
+	def cleanFiles = {
+		println("Cleaning files...")
+		for (file <- clientDir.listFiles)
+			file.delete
+		for (file <- serverDir.listFiles)
+			file.delete
+		println("Files cleaned.")
+	}
+	
+	def createFiles = {
+		def createFile(path: String, fileNumber: Int, packetsNumber: Int) = {
+			def generateContent: String = {
+				def generateBodyContent: String = {
+					def generateInnerBodyContent: String = {
+						var innerBodyContent = ""
+						for (i <- 0 to 9)
+							innerBodyContent += ((i + fileNumber)%10).toString
+						innerBodyContent
+					}
+					
+					var bodyContent = ""
+					val innerBodyContent = generateInnerBodyContent
+					for (i <- 0 to 9)
+						bodyContent += innerBodyContent
+					return bodyContent
+				}
+				
+				def generateEndContent: String = {
+					var endContent = ""
+					for (i <- 'a' to 'l')
+						endContent += (i + fileNumber%10).toChar
+					return endContent
+				}
+			
+				var content = ""
+				val bodyContent = generateBodyContent
+				val endContent = generateEndContent
+				for (i <- 1 to 5)
+					content += bodyContent
+				content += endContent
+				return content
+			}
+		
+			val fileName = "file"+fileNumber
+			val file = new BufferedWriter( new FileWriter( new File( path, fileName ) ) )
+			val content = generateContent
+			for (i <- 1 until packetsNumber)
+				file.write(content)
+			file.write("\nThis is "+fileName+" with "+packetsNumber+" packets")
+			file.close
+		}
+	
+		println("Creating client files...")
+		//Create Client's Files
+		createFile(clientDirPath, 0, 1)
+		createFile(clientDirPath, 1, 2)
+		createFile(clientDirPath, 2, 5)
+		createFile(clientDirPath, 3, 10)
+		createFile(clientDirPath, 4, 50)
+		createFile(clientDirPath, 5, 50)
+		createFile(clientDirPath, 6, 100)
+		createFile(clientDirPath, 7, 100)
+		createFile(clientDirPath, 8, 500)
+		createFile(clientDirPath, 9, 1000)
+		println("Client Files created.")
+		
+		println("Creating server files...")
+		//Create Server's Files
+		createFile(serverDirPath, 10, 1)
+		createFile(serverDirPath, 11, 2)
+		createFile(serverDirPath, 12, 5)
+		createFile(serverDirPath, 13, 10)
+		createFile(serverDirPath, 14, 50)
+		createFile(serverDirPath, 15, 50)
+		createFile(serverDirPath, 16, 100)
+		createFile(serverDirPath, 17, 100)
+		createFile(serverDirPath, 18, 500)
+		createFile(serverDirPath, 19, 1000)
+		println("Server Files created.")
+	}
+	
 	def main = {
+		cleanFiles
+		createFiles
+	
 		TIDGenerator.start
 		TFTPServer.start
 
 		val client10 = new TFTPClient
-		client10 ! SEND("file10.txt")
+		client10 ! SEND("file0")
 		client10.start
-		//Thread.sleep(2000)
 		client10 ! Stop
 		
 		Thread.sleep(5500)
 		println
 
 		val client11 = new TFTPClient
-		client11 ! GET("file10.txt")
+		client11 ! SEND("file1")
 		client11.start
-		//Thread.sleep(2000)
 		client11 ! Stop
+		
+		Thread.sleep(5500)
+		println
+		
+		val client12 = new TFTPClient
+		client12 ! SEND("file2")
+		client12.start
+		client12 ! Stop
+		
+		Thread.sleep(5500)
+		println
+		
+		val client13 = new TFTPClient
+		client13 ! SEND("file3")
+		client13.start
+		client13 ! Stop
+		
+		Thread.sleep(5500)
+		println
+		
+		val client20 = new TFTPClient
+		client20 ! GET("file10")
+		client20.start
+		client20 ! Stop
+		
+		Thread.sleep(5500)
+		println
+
+		val client21 = new TFTPClient
+		client21 ! GET("file11")
+		client21.start
+		client21 ! Stop
+		
+		Thread.sleep(5500)
+		println
+		
+		val client22 = new TFTPClient
+		client22 ! GET("file12")
+		client22.start
+		client22 ! Stop
+		
+		Thread.sleep(5500)
+		println
+		
+		val client23 = new TFTPClient
+		client23 ! GET("file13")
+		client23.start
+		client23 ! Stop
 		
 		Thread.sleep(5500)
 		println
