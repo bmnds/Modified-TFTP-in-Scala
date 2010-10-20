@@ -170,7 +170,7 @@ object TFTPServer extends Actor with Timer {
 			react {
 				case RRQ(ref, client, server, fileName) =>
 					val filePath = path+fileName;
-					/* test code */ if (fileName.equalsIgnoreCase("file")) ref ! ERR(client, server)
+					if (!(new File(fileName)).exists) ref ! ERR(client, server)
 					else {
 						val tid = TIDGenerator !? TID match { case tid: Int => tid }
 						val connection = new Connection(ref, client, tid, filePath, 1)
