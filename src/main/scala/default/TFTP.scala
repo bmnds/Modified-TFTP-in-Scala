@@ -101,7 +101,7 @@ case class Connection(ref: Actor, client: Int, server: Int, path: String, opcode
 	val writer: BufferedWriter = if (opcode == 2 && !closed && file != null) new BufferedWriter( new FileWriter(file) ) else null //TODO do it only if it is a write request
 	
 	def updateServer(server: Int): Connection = { if (opcode == 1 && file != null) reader.close; if (opcode == 2 && file != null) writer.close; new Connection(ref, client, server, path, opcode) }
-	def updateStatus: Connection = { if (opcode == 1) reader.close; if (opcode == 2) writer.close; new Connection(ref, client, server, path, opcode, true, packetsHistory) }
+	def updateStatus: Connection = { if (opcode == 1 && reader != null) reader.close; if (opcode == 2 && writer != null) writer.close; new Connection(ref, client, server, path, opcode, true, packetsHistory) }
 	
 	def isClosed = closed
 	def wasPacketReceived(id: Int): Boolean = { val packetHistory = packetsHistory.get(id); if (packetHistory == null) false else packetHistory.received } //TODO remove unnecessary check
