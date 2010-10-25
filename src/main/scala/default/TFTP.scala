@@ -1,3 +1,26 @@
+/*
+abstract class C { val c: Int; val s: Int; val p: String; val o: Int; def read(payload: Array[Char]): Int; def write(payload: Array[Char]): Unit  }
+
+class RC(_c: Int; _s: Int; _o: Int, _p: String) extends C {
+	require(_o == 1)
+	val c: Int = _c
+	val s: Int = _s
+	val o: Int = _o
+	val p: String = _p
+	val br = new BufferedReader( new FileReader( new File(p) ) )
+	def read(payload: Array[Char]): Int = br.read(payload) //TODO implement close logic
+}
+
+class WC(_c: Int; _s: Int; _o: Int, _p: String) extends C {
+	require(_o == 2)
+	val c: Int = _c
+	val s: Int = _s
+	val o: Int = _o
+	val p: String = _p
+	val bw = new BufferedWriter( new FileWriter( new File(p) ) ) //TODO implement close logic
+	def write(payload: Array[Char]): Unit = bw.write(payload)
+}
+*/
 /* 
  * TODO: Add Error Handling
  */
@@ -14,6 +37,7 @@ import java.io.FileWriter
 import java.io.FileReader
 import java.io.BufferedWriter
 import java.io.BufferedReader
+
 case class GET(path: String)
 case class SEND(path: String)
 abstract class MSG
@@ -28,55 +52,55 @@ case class Retransmit(msg: MSG, attempts: Int)
 case object Stop
 case object TID
 
-class PacketHistory(_id: Int, _status: Boolean) {
-	val id = _id
-	val status = _status
-	def received = status
-	def updateStatus(_status: Boolean): PacketHistory = new PacketHistory(id, _status)
-	override def toString = "("+id+","+status+")"
+case class PacketHistory(id: Int, received: Boolean = false) {
+	require(id >= 0)
+	def updateStatus(status: Boolean = true): PacketHistory = PacketHistory(id, status)
+	override def toString = "("+id+","+received+")"
 }
 
-class PacketHistoryList{
-	val packetsHistory: ListBuffer[PacketHistory] = ListBuffer(new PacketHistory(1, false))
+class PacketHistoryList {
+	val packetsHistory: ListBuffer[PacketHistory] = ListBuffer( PacketHistory(1) ) //TODO remove this first packet
 	
-	def add(x: PacketHistory) = { packetsHistory += x }
-	def sub(x: PacketHistory) = { packetsHistory -= x }
+	def add(x: PacketHistory) = { 
+		require (x != null)
+		packetsHistory += x
+	}
+	def sub(x: PacketHistory) = {
+		require (x != null)
+		if (!packetsHistory.contains(x)) throw new NoSuchElementException
+		packetsHistory -= x
+	}
 	def update(id: Int) = {
+		require (id > 0)
 		var packetHistory: PacketHistory = null
-		packetsHistory foreach (x => { if (x.id == id) packetHistory = x } )
+		for (x <- packetsHistory) if (x.id == id) packetHistory = x
 		
 		val idx = packetsHistory.indexOf( packetHistory )
-		if (idx != -1)
-			packetsHistory.update(idx, packetHistory.updateStatus( true ))
-		
-		//val idx = packetsHistory.findIndexOf( packetHistory => packetHistory.asInstanceOf[PacketHistory].id == id)
-		//if (idx != -1)
-		//	packetsHistory.update(idx, new PacketHistory(id, true))
+		if (idx == -1) throw new NoSuchElementException
+
+		packetsHistory.update(idx, packetHistory.updateStatus( true ))
 	}
 	def get(id: Int): PacketHistory = {
+		require (id > 0)
 		var packetHistory: PacketHistory = null
-		packetsHistory foreach (x => { if (x.id == id) packetHistory = x } )
+		for (x <- packetsHistory) if (x.id == id) packetHistory = x
+		
+		if (packetHistory == null) throw new NoSuchElementException
 		return packetHistory
 	}
 	
-	def last = if (packetsHistory.isEmpty) null else packetsHistory.last //TODO remove unnecessary checks
+	def last = packetsHistory.last
 	
 	override def toString = { var ph = ""; packetsHistory foreach (x => ph+=x+" "); ph }
 }
 
-class Connection(_ref: Actor, _client: Int, _server: Int, _path: String, _opcode: Int, _closed: Boolean = false, _packetsHistory: PacketHistoryList = new PacketHistoryList) {
-	val ref = _ref
-	val client = _client
-	val server = _server
-	val path = _path
-	val opcode = _opcode
-	val closed = _closed
-	val packetsHistory = _packetsHistory
+case class Connection(ref: Actor, client: Int, server: Int, path: String, opcode: Int, closed: Boolean = false, packetsHistory: PacketHistoryList = new PacketHistoryList) {
+	require(ref != null && client > 0 && server > 0 && !path.isEmpty && (opcode == 1 || opcode == 2))
 	val file: File = if (server != 69) new File(path) else null //TODO do it only after server is set
 	val reader: BufferedReader = if (opcode == 1 && !closed && file != null) new BufferedReader( new FileReader(file) ) else null //TODO do it only if it is a read request
 	val writer: BufferedWriter = if (opcode == 2 && !closed && file != null) new BufferedWriter( new FileWriter(file) ) else null //TODO do it only if it is a write request
 	
-	def updateServer(_server: Int): Connection = { if (opcode == 1 && file != null) reader.close; if (opcode == 2 && file != null) writer.close; new Connection(ref, client, _server, path, opcode) }
+	def updateServer(server: Int): Connection = { if (opcode == 1 && file != null) reader.close; if (opcode == 2 && file != null) writer.close; new Connection(ref, client, server, path, opcode) }
 	def updateStatus: Connection = { if (opcode == 1) reader.close; if (opcode == 2) writer.close; new Connection(ref, client, server, path, opcode, true, packetsHistory) }
 	
 	def isClosed = closed
@@ -88,26 +112,35 @@ class Connection(_ref: Actor, _client: Int, _server: Int, _path: String, _opcode
 
 class ConnectionList {
 	val connections: ListBuffer[Connection] = ListBuffer()
-	def add(x: Connection) = { connections += x }
-	def sub(x: Connection) = { connections -= x }
+	def add(x: Connection) = {
+		require(x != null)
+		connections += x
+	}
+	def sub(x: Connection) = {
+		require(x != null)
+		connections -= x
+	}
 	def update(client: Int, server: Int) = {
+		require(client > 0 && server > 0)
 		var connection: Connection = null
 		connections foreach (x => { if (x.client == client) connection = x } )
 		
 		val idx = connections.indexOf( connection )
-		if (idx != -1)
-			connections.update(idx, connection.updateServer(server))
-		//var connection: Connection = null
-		//val idx = connections.findIndexOf( conn => if (conn.asInstanceOf[Connection].client == client) { connection = conn; true } )
-		//if (idx != -1)
-		//	connections.update(idx, connection.updateServer(server))
+		if (idx == -1) throw new NoSuchElementException
+		connections.update(idx, connection.updateServer(server))
 	}
 	def updateStatus(conn: Connection) = {
-		connections.update(connections.indexOf(conn), conn.updateStatus)
+		require(conn != null)
+		
+		val idx = connections.indexOf(conn)
+		if (idx == -1) throw new NoSuchElementException
+		connections.update(idx, conn.updateStatus)
 	}
 	def get(client: Int, server: Int): Connection = {
+		require(client > 0 && server > 0)
 		var connection: Connection = null
 		connections foreach (x => { if (x.client == client && x.server == server) connection = x } )
+		if (connection == null) throw new NoSuchElementException
 		return connection
 	}
 }
@@ -209,7 +242,7 @@ object TFTPServer extends Actor with Timer {
 					else {
 						connection.writer.write( data )
 						connection.ref ! ACK(client, server, id)
-						if (data.length < 512) { println("updating status"); connections.updateStatus(connection) }
+						if (data.length < 512) connections.updateStatus(connection)
 					}
 				case ERR(client, server) =>
 					//TODO implement error handling code

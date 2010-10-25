@@ -15,7 +15,7 @@ class TFTPFlatSpec extends FlatSpec with ShouldMatchers {
 	}
 
 	it should "Suspend and wait for requests after no more than 100ms" in {
-		Thread.sleep(100)
+		Thread.sleep(500)
 		TFTPServer.getState.toString should be === "Suspended"
 	}
 
@@ -30,9 +30,25 @@ class TFTPFlatSpec extends FlatSpec with ShouldMatchers {
 		res should be === true
 	}
 
+	it should "return an ACK message with same client and id  equal to 0 in response to a WRQ" in {
+		var res = false
+		var sTID = 0
+		var fake = actor { reactWithin(100) {
+			case ACK(100, server, 0) => sTID = server; res = true
+			case x => println(x); res = false
+		} }
+		TFTPServer ! WRQ(fake, 100, 69, "file")
+		Thread.sleep(100)
+		res should be === true
+		TFTPServer ! DATA(100, sTID, 1, "") //send message to close the connection
+	}
+
+	it should "return an ACK message with the same id in response to a DATA message" in (pending)
+
 	it should "Stop" in {
 		TFTPServer ! Stop
-		while (TFTPServer.getState.id != 6) Thread.sleep(100)
+		//while (TFTPServer.getState.id != 6) Thread.sleep(100)
+		Thread.sleep(500)
 		TFTPServer.getState.toString should be === "Terminated"
 	}
 }
