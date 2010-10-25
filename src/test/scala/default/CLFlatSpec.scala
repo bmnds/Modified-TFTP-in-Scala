@@ -8,7 +8,7 @@ import default._
 class CLFlatSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterEach {
 
 	var cl: ConnectionList = null
-	val conn = Connection(self, 1, 2, "path", 2)
+	val conn = ReadConnection(self, 1, 2, "path")
 
 	override def beforeEach { cl = new ConnectionList }
 
@@ -35,7 +35,7 @@ class CLFlatSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterEach {
 			"the updateStatus method can't match the given connection with any connection in the list" in {
 		evaluating( cl.get(1, 2) ) should produce [NoSuchElementException]
 		evaluating( cl.update(1, 2) ) should produce [NoSuchElementException]
-		evaluating( cl.updateStatus( Connection(self, 1, 2, "path", 2) ) ) should produce [NoSuchElementException]
+		evaluating( cl.updateStatus( ReadConnection(self, 1, 2, "path") ) ) should produce [NoSuchElementException]
 	}
 
 	it should "add the given connection to the list" in {
@@ -75,9 +75,9 @@ class CLFlatSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterEach {
 
 	it should "update the status of the given connection" in {
 		cl.connections += conn
-		cl.get(conn.client, conn.server).closed should be === false
+		cl.get(conn.client, conn.server).isClosed should be === false
 
 		cl.updateStatus(conn)
-		cl.get(conn.client, conn.server).closed should be === true
+		cl.get(conn.client, conn.server).isClosed should be === true
 	}
 }
