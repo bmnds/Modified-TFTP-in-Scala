@@ -100,7 +100,7 @@ case class Connection(ref: Actor, client: Int, server: Int, path: String, opcode
 	val reader: BufferedReader = if (opcode == 1 && !closed && file != null) new BufferedReader( new FileReader(file) ) else null //TODO do it only if it is a read request
 	val writer: BufferedWriter = if (opcode == 2 && !closed && file != null) new BufferedWriter( new FileWriter(file) ) else null //TODO do it only if it is a write request
 	
-	def updateServer(server: Int): Connection = { if (opcode == 1 && file != null) reader.close; if (opcode == 2 && file != null) writer.close; new Connection(ref, client, server, path, opcode) }
+	def updateServer(server: Int): Connection = { if (opcode == 1 && reader != null) reader.close; if (opcode == 2 && writer != null) writer.close; new Connection(ref, client, server, path, opcode) }
 	def updateStatus: Connection = { if (opcode == 1 && reader != null) reader.close; if (opcode == 2 && writer != null) writer.close; new Connection(ref, client, server, path, opcode, true, packetsHistory) }
 	
 	def isClosed = closed
